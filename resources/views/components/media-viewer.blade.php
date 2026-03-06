@@ -91,9 +91,9 @@
         x-transition:leave="transition ease-in duration-150"
         x-transition:leave-start="opacity-100"
         x-transition:leave-end="opacity-0"
-        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-sm"
+        class="fixed inset-0 flex items-center justify-center"
+        style="display:none; background-color:rgba(0,0,0,0.85); backdrop-filter:blur(4px); z-index:9999;"
         @click.self="closeLightbox()"
-        style="display: none;"
     >
         {{-- Prev button --}}
         <button
@@ -107,7 +107,7 @@
         </button>
 
         {{-- Image + close button anchored to its top-right corner --}}
-        <div class="relative inline-block">
+        <div style="position:relative; display:inline-block;">
             <img
                 :src="lightboxSrc"
                 class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl select-none"
@@ -119,7 +119,8 @@
             <button
                 @click="closeLightbox()"
                 type="button"
-                class="absolute -top-4 -right-4 z-10 flex items-center justify-center w-9 h-9 rounded-full bg-white/20 border border-white/30 hover:bg-white/40 text-white transition-all duration-200 shadow-lg backdrop-blur-md"
+                style="position:absolute; top:-14px; right:-14px; z-index:10000;"
+                class="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 border border-white/30 hover:bg-white/40 text-white shadow-lg"
                 aria-label="Close"
             >
                 <x-heroicon-o-x-mark class="w-5 h-5" />

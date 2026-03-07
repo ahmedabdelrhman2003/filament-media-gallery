@@ -23,7 +23,7 @@ This package replaces that entry with a smart, type-aware gallery component.
 | Dependency | Version | Notes |
 |------------|---------|-------|
 | Laravel | 10+ | |
-| Filament | 3+ | Alpine.js + Tailwind bundled |
+| Filament | 3, 4, 5 | Alpine.js + Tailwind bundled |
 | Spatie Media Library | 10+ | Models must use `HasMedia` + `InteractsWithMedia` |
 | PHP | 8.2+ | |
 

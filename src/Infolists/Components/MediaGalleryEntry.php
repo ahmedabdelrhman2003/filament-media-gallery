@@ -18,7 +18,7 @@ use Illuminate\Support\Collection;
  * reusable `x-media-gallery-viewer` component.
  *
  * Dependencies:
- *   - Filament 3+
+ *   - Filament 3, 4, or 5
  *   - Spatie Media Library (any model using HasMedia / InteractsWithMedia)
  *   - Alpine.js (already bundled with Filament)
  *   - Tailwind CSS (already bundled with Filament)

@@ -96,7 +96,7 @@
         @click.self="closeLightbox()"
     >
         {{-- Main row: prev button + image + next button --}}
-        <div class="flex items-center justify-center gap-4 w-full" @click.self="closeLightbox()">
+        <div class="flex items-center justify-center gap-4 w-full max-h-[90vh]" @click.self="closeLightbox()">
             {{-- Prev button --}}
             <button
                 x-show="lightboxImages.length > 1"
@@ -109,10 +109,10 @@
             </button>
 
             {{-- Image + close button anchored to its top-right corner --}}
-            <div style="position:relative; display:inline-block; max-height:85vh;">
+            <div class="relative flex-1 min-w-0 flex items-center justify-center max-h-[90vh]">
                 <img
                     :src="lightboxSrc"
-                    class="max-w-[80vw] max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl select-none"
+                    class="max-w-full max-h-[90vh] w-auto h-auto object-contain rounded-lg shadow-2xl select-none"
                     alt="Full size preview"
                     draggable="false"
                 >

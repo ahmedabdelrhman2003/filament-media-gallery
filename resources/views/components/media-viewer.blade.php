@@ -145,7 +145,8 @@
             <div style="position:relative; display:inline-block; max-height:calc(100vh - 8rem);">
                 <img
                     :src="lightboxSrc"
-                    class="max-w-[80vw] max-h-[calc(100vh-8rem)] w-auto h-auto object-contain rounded-lg shadow-2xl select-none"
+                    style="display:block; max-width:80vw; max-height:calc(100vh - 8rem); width:auto; height:auto;"
+                    class="object-contain rounded-lg shadow-2xl select-none"
                     alt="Full size preview"
                     draggable="false"
                 >

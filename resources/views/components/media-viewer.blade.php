@@ -1,19 +1,45 @@
 @props(['media' => collect(), 'size' => null, 'rounded' => false])
 
 @php
-    $imageUrls = [];
-    $imageItems = [];
-
-    foreach ($media as $item) {
-        if (str_starts_with($item->mime_type, 'image/')) {
-            $imageUrls[] = $item->getUrl();
-            $imageItems[] = $item;
-        }
-    }
-
-    $cardStyle = $size ? "width:{$size}px; height:{$size}px;" : null;
-    $cardClass = $size ? '' : 'aspect-square';
+    // ─── Card styling ────────────────────────────────────────────────────────
+    $cardStyle    = $size ? "width:{$size}px; height:{$size}px;" : null;
+    $cardClass    = $size ? '' : 'aspect-square';
     $roundedClass = $rounded ? 'rounded-full' : 'rounded-lg';
+
+    // ─── Pre-compute per-item data ────────────────────────────────────────────
+    // $imageUrls  — ordered list of full-size image URLs fed to the lightbox
+    // $imageIndex — counter that assigns each image its lightbox position
+    $imageUrls  = [];
+    $imageIndex = 0;
+
+    $items = $media->map(function ($mediaItem) use (&$imageUrls, &$imageIndex) {
+        $isImage = str_starts_with($mediaItem->mime_type, 'image/');
+
+        $lightboxIndex = null;
+        $thumbUrl      = null;
+
+        if ($isImage) {
+            // Reserve a lightbox slot for this image
+            $lightboxIndex = $imageIndex++;
+            $imageUrls[]   = $mediaItem->getUrl();
+
+            // Pick the best available thumbnail conversion
+            // To add a new conversion (e.g. 'medium'), insert another match arm here
+            $thumbUrl = match (true) {
+                $mediaItem->hasGeneratedConversion('thumbnail') => $mediaItem->getUrl('thumbnail'),
+                $mediaItem->hasGeneratedConversion('preview')   => $mediaItem->getUrl('preview'),
+                default                                          => $mediaItem->getUrl(),
+            };
+        }
+
+        return [
+            'media'         => $mediaItem,
+            'isImage'       => $isImage,
+            'thumbUrl'      => $thumbUrl,            // null for non-images
+            'lightboxIndex' => $lightboxIndex,       // null for non-images
+            'extension'     => strtoupper(pathinfo($mediaItem->file_name, PATHINFO_EXTENSION)),
+        ];
+    });
 @endphp
 
 <div
@@ -24,49 +50,54 @@
         lightboxIndex: 0,
         openLightbox(images, index) {
             this.lightboxImages = images;
-            this.lightboxIndex = index;
-            this.lightboxSrc = images[index];
-            this.lightboxOpen = true;
+            this.lightboxIndex  = index;
+            this.lightboxSrc    = images[index];
+            this.lightboxOpen   = true;
         },
         closeLightbox() {
             this.lightboxOpen = false;
         },
         nextImage() {
             this.lightboxIndex = (this.lightboxIndex + 1) % this.lightboxImages.length;
-            this.lightboxSrc = this.lightboxImages[this.lightboxIndex];
+            this.lightboxSrc   = this.lightboxImages[this.lightboxIndex];
         },
         prevImage() {
             this.lightboxIndex = (this.lightboxIndex - 1 + this.lightboxImages.length) % this.lightboxImages.length;
-            this.lightboxSrc = this.lightboxImages[this.lightboxIndex];
+            this.lightboxSrc   = this.lightboxImages[this.lightboxIndex];
         }
     }"
     @keydown.escape.window="closeLightbox()"
 >
+    {{-- ─── Empty state ──────────────────────────────────────────────────── --}}
     @if ($media->isEmpty())
         <p class="text-sm text-gray-400 dark:text-gray-500 italic">No files uploaded.</p>
+
+    {{-- ─── Media grid ───────────────────────────────────────────────────── --}}
     @else
         <div class="flex flex-wrap gap-3">
-            @foreach ($media as $item)
-                @if (str_starts_with($item->mime_type, 'image/'))
-                    @php $imgIndex = array_search($item, $imageItems, true); @endphp
+            @foreach ($items as $item)
+
+                {{-- Image card — opens lightbox on click --}}
+                @if ($item['isImage'])
                     <div
                         class="relative group cursor-pointer {{ $roundedClass }} overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 {{ $cardClass }}"
                         @if ($cardStyle) style="{{ $cardStyle }}" @endif
-                        @click="openLightbox({{ json_encode($imageUrls) }}, {{ $imgIndex }})"
+                        @click="openLightbox({{ json_encode($imageUrls) }}, {{ $item['lightboxIndex'] }})"
                     >
                         <img
-                            src="{{ $item->hasGeneratedConversion('thumbnail') ? $item->getUrl('thumbnail') : ($item->hasGeneratedConversion('preview') ? $item->getUrl('preview') : $item->getUrl()) }}"
-                            alt="{{ $item->name }}"
+                            src="{{ $item['thumbUrl'] }}"
+                            alt="{{ $item['media']->name }}"
                             class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
                         >
                         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors duration-200 flex items-center justify-center">
                             <x-heroicon-o-magnifying-glass-plus class="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-lg" />
                         </div>
                     </div>
+
+                {{-- File card — opens file in a new tab --}}
                 @else
-                    {{-- PDF or other file --}}
                     <a
-                        href="{{ $item->getUrl() }}"
+                        href="{{ $item['media']->getUrl() }}"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="group flex flex-col items-center justify-center gap-2 {{ $roundedClass }} border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 {{ $cardClass }} hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-950 transition-colors duration-200"
@@ -74,15 +105,16 @@
                     >
                         <x-heroicon-o-document class="w-7 h-7 text-red-500 group-hover:text-red-600 transition-colors duration-200 flex-shrink-0" />
                         <span class="text-[9px] font-bold uppercase tracking-wider text-red-500 bg-red-50 dark:bg-red-950 px-1.5 py-0.5 rounded-full leading-none">
-                            PDF
+                            {{ $item['extension'] }}
                         </span>
                     </a>
                 @endif
+
             @endforeach
         </div>
     @endif
 
-    {{-- Lightbox overlay --}}
+    {{-- ─── Lightbox overlay ─────────────────────────────────────────────── --}}
     <div
         x-show="lightboxOpen"
         x-transition:enter="transition ease-out duration-200"
@@ -97,6 +129,7 @@
     >
         {{-- Main row: prev button + image + next button --}}
         <div class="flex items-center justify-center gap-4 w-full" @click.self="closeLightbox()">
+
             {{-- Prev button --}}
             <button
                 x-show="lightboxImages.length > 1"
@@ -108,7 +141,7 @@
                 <x-heroicon-o-chevron-left class="w-6 h-6" />
             </button>
 
-            {{-- Image + close button anchored to its top-right corner --}}
+            {{-- Image with close button pinned to its top-right corner --}}
             <div style="position:relative; display:inline-block; max-height:85vh;">
                 <img
                     :src="lightboxSrc"
@@ -116,8 +149,6 @@
                     alt="Full size preview"
                     draggable="false"
                 >
-
-                {{-- Close button pinned to the top-right corner of the image --}}
                 <button
                     @click="closeLightbox()"
                     type="button"
@@ -139,9 +170,10 @@
             >
                 <x-heroicon-o-chevron-right class="w-6 h-6" />
             </button>
+
         </div>
 
-        {{-- Counter — sits below the image row, horizontally centered --}}
+        {{-- Counter badge — only shown when there are multiple images --}}
         <div
             x-show="lightboxImages.length > 1"
             class="text-white text-sm bg-black/50 px-3 py-1 rounded-full select-none"

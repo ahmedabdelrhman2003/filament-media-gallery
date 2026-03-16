@@ -8,11 +8,13 @@
 
     // ─── Pre-compute per-item data ────────────────────────────────────────────
     // $imageUrls  — ordered list of full-size image URLs fed to the lightbox
+    // $thumbUrls  — ordered list of thumbnail URLs fed to the lightbox strip
     // $imageIndex — counter that assigns each image its lightbox position
     $imageUrls  = [];
+    $thumbUrls  = [];
     $imageIndex = 0;
 
-    $items = $media->map(function ($mediaItem) use (&$imageUrls, &$imageIndex) {
+    $items = $media->map(function ($mediaItem) use (&$imageUrls, &$thumbUrls, &$imageIndex) {
         $isImage = str_starts_with($mediaItem->mime_type, 'image/');
 
         $lightboxIndex = null;
@@ -30,6 +32,8 @@
                 $mediaItem->hasGeneratedConversion('preview')   => $mediaItem->getUrl('preview'),
                 default                                          => $mediaItem->getUrl(),
             };
+
+            $thumbUrls[] = $thumbUrl;
         }
 
         return [
@@ -47,26 +51,40 @@
         lightboxOpen: false,
         lightboxSrc: '',
         lightboxImages: [],
+        lightboxThumbs: [],
         lightboxIndex: 0,
-        openLightbox(images, index) {
+        openLightbox(images, thumbs, index) {
             this.lightboxImages = images;
+            this.lightboxThumbs = thumbs;
             this.lightboxIndex  = index;
             this.lightboxSrc    = images[index];
             this.lightboxOpen   = true;
+            this.$nextTick(() => this.scrollThumb(index));
         },
         closeLightbox() {
             this.lightboxOpen = false;
         },
+        goTo(index) {
+            this.lightboxIndex = index;
+            this.lightboxSrc   = this.lightboxImages[index];
+            this.scrollThumb(index);
+        },
         nextImage() {
-            this.lightboxIndex = (this.lightboxIndex + 1) % this.lightboxImages.length;
-            this.lightboxSrc   = this.lightboxImages[this.lightboxIndex];
+            this.goTo((this.lightboxIndex + 1) % this.lightboxImages.length);
         },
         prevImage() {
-            this.lightboxIndex = (this.lightboxIndex - 1 + this.lightboxImages.length) % this.lightboxImages.length;
-            this.lightboxSrc   = this.lightboxImages[this.lightboxIndex];
+            this.goTo((this.lightboxIndex - 1 + this.lightboxImages.length) % this.lightboxImages.length);
+        },
+        scrollThumb(index) {
+            const strip = this.$refs.thumbStrip;
+            if (!strip) return;
+            const thumb = strip.children[index];
+            if (thumb) thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
     }"
     @keydown.escape.window="closeLightbox()"
+    @keydown.arrow-right.window="if (lightboxOpen) nextImage()"
+    @keydown.arrow-left.window="if (lightboxOpen) prevImage()"
 >
     {{-- ─── Empty state ──────────────────────────────────────────────────── --}}
     @if ($media->isEmpty())
@@ -82,7 +100,7 @@
                     <div
                         class="relative group cursor-pointer {{ $roundedClass }} overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 {{ $cardClass }}"
                         @if ($cardStyle) style="{{ $cardStyle }}" @endif
-                        @click="openLightbox({{ json_encode($imageUrls) }}, {{ $item['lightboxIndex'] }})"
+                        @click="openLightbox({{ json_encode($imageUrls) }}, {{ json_encode($thumbUrls) }}, {{ $item['lightboxIndex'] }})"
                     >
                         <img
                             src="{{ $item['thumbUrl'] }}"
@@ -114,71 +132,5 @@
         </div>
     @endif
 
-    {{-- ─── Lightbox overlay ─────────────────────────────────────────────── --}}
-    <div
-        x-show="lightboxOpen"
-        x-transition:enter="transition ease-out duration-200"
-        x-transition:enter-start="opacity-0"
-        x-transition:enter-end="opacity-100"
-        x-transition:leave="transition ease-in duration-150"
-        x-transition:leave-start="opacity-100"
-        x-transition:leave-end="opacity-0"
-        class="fixed inset-0 flex flex-col items-center justify-center gap-4 p-6"
-        style="display:none; background-color:rgba(0,0,0,0.85); backdrop-filter:blur(4px); z-index:9999;"
-        @click.self="closeLightbox()"
-    >
-        {{-- Main row: prev button + image + next button --}}
-        <div class="flex items-center justify-center gap-4 w-full" @click.self="closeLightbox()">
-
-            {{-- Prev button --}}
-            <button
-                x-show="lightboxImages.length > 1"
-                @click="prevImage()"
-                type="button"
-                class="flex-shrink-0 p-2 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors duration-200"
-                aria-label="Previous"
-            >
-                <x-heroicon-o-chevron-left class="w-6 h-6" />
-            </button>
-
-            {{-- Image with close button pinned to its top-right corner --}}
-            <div style="position:relative; display:inline-block; max-height:calc(100vh - 8rem);">
-                <img
-                    :src="lightboxSrc"
-                    style="display:block; max-width:80vw; max-height:calc(100vh - 8rem); width:auto; height:auto;"
-                    class="object-contain rounded-lg shadow-2xl select-none"
-                    alt="Full size preview"
-                    draggable="false"
-                >
-                <button
-                    @click="closeLightbox()"
-                    type="button"
-                    style="position:absolute; top:-14px; right:-14px; z-index:10000;"
-                    class="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 border border-white/30 hover:bg-white/40 text-white shadow-lg"
-                    aria-label="Close"
-                >
-                    <x-heroicon-o-x-mark class="w-5 h-5" />
-                </button>
-            </div>
-
-            {{-- Next button --}}
-            <button
-                x-show="lightboxImages.length > 1"
-                @click="nextImage()"
-                type="button"
-                class="flex-shrink-0 p-2 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors duration-200"
-                aria-label="Next"
-            >
-                <x-heroicon-o-chevron-right class="w-6 h-6" />
-            </button>
-
-        </div>
-
-        {{-- Counter badge — only shown when there are multiple images --}}
-        <div
-            x-show="lightboxImages.length > 1"
-            class="text-white text-sm bg-black/50 px-3 py-1 rounded-full select-none"
-            x-text="`${lightboxIndex + 1} / ${lightboxImages.length}`"
-        ></div>
-    </div>
+    @include('media-gallery::components.media-lightbox')
 </div>

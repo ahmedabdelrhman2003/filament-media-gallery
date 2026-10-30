@@ -54,7 +54,7 @@ class MediaGalleryEntry extends Entry
         return $this;
     }
 
-    public function size(int $pixels): static
+    public function size(?int $pixels): static
     {
         $this->size = $pixels;
 

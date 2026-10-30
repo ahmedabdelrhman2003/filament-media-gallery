@@ -3,45 +3,94 @@
 @php
     // ─── Card styling ────────────────────────────────────────────────────────
     $cardStyle    = $size ? "width:{$size}px; height:{$size}px;" : null;
-    $cardClass    = $size ? '' : 'aspect-square';
+    $cardClass    = $size ? '' : 'w-full aspect-square';
+    $gridClass    = $size ? 'flex flex-wrap gap-3' : 'grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3';
     $roundedClass = $rounded ? 'rounded-full' : 'rounded-lg';
 
-    // ─── Pre-compute per-item data ────────────────────────────────────────────
-    // $imageUrls  — ordered list of full-size image URLs fed to the lightbox
-    // $thumbUrls  — ordered list of thumbnail URLs fed to the lightbox strip
-    // $imageIndex — counter that assigns each image its lightbox position
-    $imageUrls  = [];
-    $thumbUrls  = [];
-    $imageIndex = 0;
+    // ─── File-type detection ─────────────────────────────────────────────────
+    // Returns [kind, label, icon, text colour, badge bg] for a media item.
+    // kind: image | video | pdf | word | excel | powerpoint | file
+    $describe = function ($mediaItem): array {
+        $mime = strtolower((string) $mediaItem->mime_type);
+        $ext  = strtolower(pathinfo((string) $mediaItem->file_name, PATHINFO_EXTENSION));
 
-    $items = $media->map(function ($mediaItem) use (&$imageUrls, &$thumbUrls, &$imageIndex) {
-        $isImage = str_starts_with($mediaItem->mime_type, 'image/');
+        return match (true) {
+            str_starts_with($mime, 'image/')
+                => ['image', strtoupper($ext), null, null, null],
+
+            str_starts_with($mime, 'video/')
+                => ['video', strtoupper($ext), 'heroicon-o-play-circle', 'text-purple-500', 'bg-purple-50 dark:bg-purple-950'],
+
+            $mime === 'application/pdf' || $ext === 'pdf'
+                => ['pdf', 'PDF', 'heroicon-o-document', 'text-red-500', 'bg-red-50 dark:bg-red-950'],
+
+            in_array($ext, ['doc', 'docx', 'odt', 'rtf'])
+                || str_contains($mime, 'msword')
+                || str_contains($mime, 'wordprocessingml')
+                => ['word', strtoupper($ext), 'heroicon-o-document-text', 'text-blue-600', 'bg-blue-50 dark:bg-blue-950'],
+
+            in_array($ext, ['xls', 'xlsx', 'ods', 'csv'])
+                || str_contains($mime, 'ms-excel')
+                || str_contains($mime, 'spreadsheetml')
+                || $mime === 'text/csv'
+                => ['excel', strtoupper($ext), 'heroicon-o-table-cells', 'text-green-600', 'bg-green-50 dark:bg-green-950'],
+
+            in_array($ext, ['ppt', 'pptx', 'odp'])
+                || str_contains($mime, 'ms-powerpoint')
+                || str_contains($mime, 'presentationml')
+                => ['powerpoint', strtoupper($ext), 'heroicon-o-presentation-chart-bar', 'text-indigo-500', 'bg-indigo-50 dark:bg-indigo-950'],
+
+            default
+                => ['file', strtoupper($ext) ?: 'FILE', 'heroicon-o-document', 'text-gray-500', 'bg-gray-100 dark:bg-gray-700'],
+        };
+    };
+
+    // ─── Pre-compute per-item data ────────────────────────────────────────────
+    // $lightboxItems — ordered list of {type, src, thumb} fed to the lightbox
+    //                  (images, videos and PDFs share one lightbox sequence)
+    $lightboxItems = [];
+
+    $items = $media->map(function ($mediaItem) use (&$lightboxItems, $describe) {
+        [$kind, $label, $icon, $iconColor, $badgeBg] = $describe($mediaItem);
 
         $lightboxIndex = null;
-        $thumbUrl      = null;
 
-        if ($isImage) {
-            // Reserve a lightbox slot for this image
-            $lightboxIndex = $imageIndex++;
-            $imageUrls[]   = $mediaItem->getUrl();
+        // Pick the best available thumbnail conversion. For images we fall back to the
+        // original; for every other type a thumbnail only exists if the host app has an
+        // image generator for it (see README "File thumbnails") — otherwise an icon is shown.
+        // To add a new conversion (e.g. 'medium'), insert another match arm here.
+        $thumbUrl = match (true) {
+            $mediaItem->hasGeneratedConversion('thumbnail') => $mediaItem->getUrl('thumbnail'),
+            $mediaItem->hasGeneratedConversion('preview')   => $mediaItem->getUrl('preview'),
+            $kind === 'image'                                => $mediaItem->getUrl(),
+            default                                          => null,
+        };
 
-            // Pick the best available thumbnail conversion
-            // To add a new conversion (e.g. 'medium'), insert another match arm here
-            $thumbUrl = match (true) {
-                $mediaItem->hasGeneratedConversion('thumbnail') => $mediaItem->getUrl('thumbnail'),
-                $mediaItem->hasGeneratedConversion('preview')   => $mediaItem->getUrl('preview'),
-                default                                          => $mediaItem->getUrl(),
-            };
+        if ($kind === 'image') {
+            $lightboxIndex   = count($lightboxItems);
+            $lightboxItems[] = ['type' => 'image', 'src' => $mediaItem->getUrl(), 'thumb' => $thumbUrl];
+        }
 
-            $thumbUrls[] = $thumbUrl;
+        if ($kind === 'video') {
+            $lightboxIndex   = count($lightboxItems);
+            $lightboxItems[] = ['type' => 'video', 'src' => $mediaItem->getUrl(), 'thumb' => $thumbUrl, 'mime' => (string) $mediaItem->mime_type];
+        }
+
+        if ($kind === 'pdf') {
+            // Previewed inline via the browser's native PDF viewer (<iframe>), scrollable like the image view.
+            $lightboxIndex   = count($lightboxItems);
+            $lightboxItems[] = ['type' => 'pdf', 'src' => $mediaItem->getUrl(), 'thumb' => $thumbUrl, 'name' => (string) $mediaItem->file_name];
         }
 
         return [
             'media'         => $mediaItem,
-            'isImage'       => $isImage,
-            'thumbUrl'      => $thumbUrl,            // null for non-images
-            'lightboxIndex' => $lightboxIndex,       // null for non-images
-            'extension'     => strtoupper(pathinfo($mediaItem->file_name, PATHINFO_EXTENSION)),
+            'kind'          => $kind,
+            'label'         => $label,
+            'icon'          => $icon,
+            'iconColor'     => $iconColor,
+            'badgeBg'       => $badgeBg,
+            'thumbUrl'      => $thumbUrl,
+            'lightboxIndex' => $lightboxIndex,
         ];
     });
 @endphp
@@ -49,36 +98,34 @@
 <div
     x-data="{
         lightboxOpen: false,
-        lightboxSrc: '',
-        lightboxImages: [],
-        lightboxThumbs: [],
+        backdropDown: false,
+        lightboxItems: @js($lightboxItems),
         lightboxIndex: 0,
-        openLightbox(images, thumbs, index) {
-            this.lightboxImages = images;
-            this.lightboxThumbs = thumbs;
-            this.lightboxIndex  = index;
-            this.lightboxSrc    = images[index];
-            this.lightboxOpen   = true;
+        get current() { return this.lightboxItems[this.lightboxIndex] ?? null; },
+        openLightbox(index) {
+            this.lightboxIndex = index;
+            this.lightboxOpen  = true;
+            document.body.style.overflow = 'hidden';
             this.$nextTick(() => this.scrollThumb(index));
         },
         closeLightbox() {
             this.lightboxOpen = false;
+            document.body.style.overflow = '';
         },
         goTo(index) {
             this.lightboxIndex = index;
-            this.lightboxSrc   = this.lightboxImages[index];
             this.scrollThumb(index);
         },
         nextImage() {
-            this.goTo((this.lightboxIndex + 1) % this.lightboxImages.length);
+            this.goTo((this.lightboxIndex + 1) % this.lightboxItems.length);
         },
         prevImage() {
-            this.goTo((this.lightboxIndex - 1 + this.lightboxImages.length) % this.lightboxImages.length);
+            this.goTo((this.lightboxIndex - 1 + this.lightboxItems.length) % this.lightboxItems.length);
         },
         scrollThumb(index) {
             const strip = this.$refs.thumbStrip;
             if (!strip) return;
-            const thumb = strip.children[index];
+            const thumb = strip.querySelectorAll('[data-thumb]')[index];
             if (thumb) thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
     }"
@@ -92,19 +139,20 @@
 
     {{-- ─── Media grid ───────────────────────────────────────────────────── --}}
     @else
-        <div class="flex flex-wrap gap-3">
+        <div class="{{ $gridClass }}">
             @foreach ($items as $item)
 
                 {{-- Image card — opens lightbox on click --}}
-                @if ($item['isImage'])
+                @if ($item['kind'] === 'image')
                     <div
                         class="relative group cursor-pointer {{ $roundedClass }} overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 {{ $cardClass }}"
                         @if ($cardStyle) style="{{ $cardStyle }}" @endif
-                        @click="openLightbox({{ json_encode($imageUrls) }}, {{ json_encode($thumbUrls) }}, {{ $item['lightboxIndex'] }})"
+                        @click="openLightbox({{ $item['lightboxIndex'] }})"
                     >
                         <img
                             src="{{ $item['thumbUrl'] }}"
                             alt="{{ $item['media']->name }}"
+                            loading="lazy"
                             class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
                         >
                         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors duration-200 flex items-center justify-center">
@@ -112,19 +160,57 @@
                         </div>
                     </div>
 
-                {{-- File card — opens file in a new tab --}}
+                {{-- Video card — muted preview, opens lightbox player on click --}}
+                @elseif ($item['kind'] === 'video')
+                    <div
+                        class="relative group cursor-pointer {{ $roundedClass }} overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-900 {{ $cardClass }}"
+                        @if ($cardStyle) style="{{ $cardStyle }}" @endif
+                        @click="openLightbox({{ $item['lightboxIndex'] }})"
+                    >
+                        @if ($item['thumbUrl'])
+                            <img src="{{ $item['thumbUrl'] }}" alt="{{ $item['media']->name }}" loading="lazy" class="w-full h-full object-cover">
+                        @else
+                            <video
+                                src="{{ $item['media']->getUrl() }}#t=0.1"
+                                preload="metadata"
+                                muted
+                                playsinline
+                                class="w-full h-full object-cover pointer-events-none"
+                            ></video>
+                        @endif
+                        <div class="absolute inset-0 bg-black/30 group-hover:bg-black/50 transition-colors duration-200 flex items-center justify-center">
+                            <x-heroicon-s-play class="w-10 h-10 text-white drop-shadow-lg transition-transform duration-200 group-hover:scale-110" />
+                        </div>
+                        <span class="absolute bottom-2 right-2 text-[9px] font-bold uppercase tracking-wider text-white bg-black/60 px-1.5 py-0.5 rounded-full leading-none">
+                            {{ $item['label'] }}
+                        </span>
+                    </div>
+
+                {{-- PDF card — opens inline preview in the lightbox --}}
+                @elseif ($item['kind'] === 'pdf')
+                    <div
+                        role="button"
+                        tabindex="0"
+                        title="{{ $item['media']->file_name }}"
+                        class="relative group cursor-pointer flex flex-col items-center justify-center gap-2 {{ $roundedClass }} overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 {{ $item['thumbUrl'] ? '' : 'p-3' }} {{ $cardClass }} hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-950 transition-colors duration-200"
+                        @if ($cardStyle) style="{{ $cardStyle }}" @endif
+                        @click="openLightbox({{ $item['lightboxIndex'] }})"
+                        @keydown.enter.prevent="openLightbox({{ $item['lightboxIndex'] }})"
+                    >
+                        @include('media-gallery::components.media-file-card-body', ['item' => $item])
+                    </div>
+
+                {{-- Document card — opens file in a new tab --}}
                 @else
                     <a
                         href="{{ $item['media']->getUrl() }}"
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="group flex flex-col items-center justify-center gap-2 {{ $roundedClass }} border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 {{ $cardClass }} hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-950 transition-colors duration-200"
+                        title="{{ $item['media']->file_name }}"
+                        class="relative group flex flex-col items-center justify-center gap-2 {{ $roundedClass }} overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 {{ $item['thumbUrl'] ? '' : 'p-3' }} {{ $cardClass }} hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-950 transition-colors duration-200"
                         @if ($cardStyle) style="{{ $cardStyle }}" @endif
                     >
-                        <x-heroicon-o-document class="w-7 h-7 text-red-500 group-hover:text-red-600 transition-colors duration-200 flex-shrink-0" />
-                        <span class="text-[9px] font-bold uppercase tracking-wider text-red-500 bg-red-50 dark:bg-red-950 px-1.5 py-0.5 rounded-full leading-none">
-                            {{ $item['extension'] }}
-                        </span>
+                        @include('media-gallery::components.media-file-card-body', ['item' => $item])
                     </a>
                 @endif
 

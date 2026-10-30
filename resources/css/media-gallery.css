@@ -1,0 +1,4 @@
+/* Source stylesheet. Build with `npm run build` → resources/dist/media-gallery.css */
+@tailwind utilities;
+
+[x-cloak] { display: none !important; }

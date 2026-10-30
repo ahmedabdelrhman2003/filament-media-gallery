@@ -1,0 +1,11 @@
+{
+    "name": "filament-media-gallery",
+    "private": true,
+    "scripts": {
+        "build": "tailwindcss -i resources/css/media-gallery.css -o resources/dist/media-gallery.css --minify",
+        "dev": "tailwindcss -i resources/css/media-gallery.css -o resources/dist/media-gallery.css --watch"
+    },
+    "devDependencies": {
+        "tailwindcss": "^3.4.0"
+    }
+}
